@@ -7,13 +7,11 @@
 ; 'Слово с буквами, которые уже угаданы, и _ вместо остальных'
 $mask(%word, %guessed):
 	%shown = ''
-	%i = 0
-	@%i < #len(%word):
-		? %word[%i] ~ %guessed: ; 'буква среди названных'
-			%shown = %shown + %word[%i]
+	@%letter : %word: ; 'по буквам слова'
+		? %letter ~ %guessed: ; 'буква среди названных'
+			%shown = %shown + %letter
 		>
 			%shown = %shown + '_'
-		%i = %i + 1
 	:< %shown
 
 %word = %words[#rnd(0, #len(%words) - 1)]

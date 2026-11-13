@@ -338,6 +338,93 @@ class Num(unittest.TestCase):
             self.assertIn("cannot convert", error_of(f">: #num('{spelling}')"), spelling)
 
 
+class ForEach(unittest.TestCase):
+    def test_over_list(self):
+        self.assertEqual(out_lines("@%x : [10, 20, 30]:\n\t>: %x + 1"), ["11", "21", "31"])
+
+    def test_over_text_goes_by_characters(self):
+        self.assertEqual(out_lines("@%c : 'абв':\n\t>: %c"), ["а", "б", "в"])
+
+    def test_over_variable_and_call_results(self):
+        self.assertEqual(out_lines("%l = ['a', 'b']\n@%x : %l:\n\t>: %x"), ["a", "b"])
+        self.assertEqual(out_lines("@%x : #split('p q', ' '):\n\t>: %x"), ["p", "q"])
+        self.assertEqual(out_lines("$f():\n\t:< [1, 2]\n@%x : $f():\n\t>: %x"), ["1", "2"])
+
+    def test_empty_list_and_empty_text_do_not_run_the_body(self):
+        self.assertEqual(out_lines("@%x : []:\n\t>: 'body'\n>: 'after'"), ["after"])
+        self.assertEqual(out_lines("@%x : '':\n\t>: 'body'\n>: 'after'"), ["after"])
+
+    def test_variable_keeps_last_value_after_the_loop(self):
+        self.assertEqual(out_lines("@%x : [1, 2, 3]:\n\t%y = 0\n>: %x"), ["3"])
+
+    def test_empty_loop_leaves_the_variable_untouched(self):
+        self.assertEqual(out_lines("%x = 'old'\n@%x : []:\n\t%y = 0\n>: %x"), ["old"])
+
+    def test_sum_and_count(self):
+        src = "%sum = 0\n@%n : [4, 9, 2]:\n\t%sum = %sum + %n\n>: %sum"
+        self.assertEqual(out_lines(src), ["15"])
+
+    def test_nested_loops(self):
+        src = "@%a : [1, 2]:\n\t@%b : 'xy':\n\t\t>: %a + %b"
+        self.assertEqual(out_lines(src), ["1x", "1y", "2x", "2y"])
+
+    def test_loop_over_rows_of_lists(self):
+        src = "%total = 0\n@%row : [[1, 2], [3]]:\n\t@%v : %row:\n\t\t%total = %total + %v\n>: %total"
+        self.assertEqual(out_lines(src), ["6"])
+
+    def test_snapshot_changing_the_list_inside_does_not_affect_iteration(self):
+        src = "%l = [1, 2]\n@%x : %l:\n\t%l = #add(%l, 9)\n\t>: %x\n>: %l"
+        self.assertEqual(out_lines(src), ["1", "2", "[1, 2, 9, 9]"])
+        src = "%l = [1, 2, 3]\n@%x : %l:\n\t%l[2] = 0\n\t>: %x"
+        self.assertEqual(out_lines(src), ["1", "2", "3"])  # element 3 was snapshotted, not 0
+
+    def test_loop_variable_is_a_copy_of_the_element(self):
+        src = "%l = [[1], [2]]\n@%row : %l:\n\t%row[0] = 99\n>: %l"
+        self.assertEqual(out_lines(src), ["[[1], [2]]"])
+
+    def test_return_from_inside_the_loop(self):
+        src = ("$first(%l, %want):\n\t@%x : %l:\n\t\t? %x == %want:\n\t\t\t:< 'found'\n\t:< 'missing'\n"
+               ">: $first([1, 2, 3], 2)\n>: $first([1, 2, 3], 7)")
+        self.assertEqual(out_lines(src), ["found", "missing"])
+
+    def test_loop_inside_function_does_not_leak_its_variable(self):
+        src = "$f(%l):\n\t@%x : %l:\n\t\t%y = 1\n\t:< 0\n%r = $f([1])\n>: %x"
+        self.assertIn("undefined variable: %x", error_of(src))
+
+    def test_comment_after_header_and_with_inner_comment_line(self):
+        src = "@%x : [1, 2]: ; 'по элементам'\n\t; внутри\n\t>: %x"
+        self.assertEqual(out_lines(src), ["1", "2"])
+
+    def test_spacing_variants(self):
+        self.assertEqual(out_lines("@%x:[1]:\n\t>: %x"), ["1"])
+        self.assertEqual(out_lines("@%x   :   [1]:\n\t>: %x"), ["1"])
+
+    def test_errors(self):
+        self.assertTrue(error_of("@%n : 5:\n\t>: 1").startswith("line 1: can only loop over a list or text"))
+        self.assertIn("can only loop over", error_of("@%n : true:\n\t>: 1"))
+        self.assertIn("can only loop over", error_of("@%n : #date:\n\t>: 1"))
+        self.assertIn("expected a list or text after ':'", error_of("@%x : :\n\t>: 1"))
+        # '@%x :' is just a while-loop on %x (the trailing ':' closes the header)
+        self.assertIn("undefined variable: %x", error_of("@%x :\n\t>: 1"))
+        self.assertIn("undefined variable: %nope", error_of("@%x : %nope:\n\t>: 1"))
+
+    def test_error_inside_the_body_names_the_inner_line(self):
+        self.assertEqual(error_of("@%x : [1]:\n\t>: %zz"), "line 2: undefined variable: %zz")
+
+    def test_loop_over_huge_text_is_capped(self):
+        with mock.patch.object(sigil, "MAX_LOOP_ITERATIONS", 5):
+            self.assertIn("exceeded 5 iterations", error_of("@%x : 'abcdefgh':\n\t>: %x"))
+
+    def test_while_loops_are_unchanged(self):
+        self.assertEqual(out_lines("%a = 2\n@%a > 0:\n\t>: %a\n\t%a = %a - 1"), ["2", "1"])
+        # a colon inside a string in a while condition is not mistaken for 'foreach'
+        self.assertEqual(out_lines("%s = 'a:b'\n@%s == 'a:b':\n\t>: 'once'\n\t%s = 'x'"), ["once"])
+        self.assertEqual(out_lines("%a = 'k'\n@%a ~ 'k:z':\n\t>: 'in'\n\t%a = 'q'"), ["in"])
+        # text that merely looks like a header ('%b : ') inside a string of a while condition
+        src = "%s = 'x'\n@%s != 'a %b : c':\n\t>: 'ok'\n\t%s = 'a %b : c'"
+        self.assertEqual(out_lines(src), ["ok"])
+
+
 class IsNum(unittest.TestCase):
     GOOD = ("'42'", "' -7 '", "'+5'", "'007'", "'2.5'", "'.5'", "'5.'", "5", "2.5", "-3")
     BAD = ("'abc'", "''", "' '", "'1,5'", "'1e5'", "'12abc'", "'--1'", "'1.2.3'", "'٣'", "[1]", "true", "#date")

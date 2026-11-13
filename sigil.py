@@ -136,7 +136,14 @@ def split_block(lines: list[Line], index: int, indent: int):
                 raise SigilError(f"line {line.number}: expected an indented loop body")
             body_indent = lines[index].indent
             body, index = split_block(lines, index, body_indent)
-            statements.append(("while", (condition, body), line.number))
+            # '@%item : <list or text>:' loops over elements; anything else is a 'while' condition.
+            each = re.fullmatch(r"%([A-Za-z_][A-Za-z_0-9]*)\s*:\s*(.*)", condition, re.S)
+            if each:
+                if not each.group(2).strip():
+                    raise SigilError(f"line {line.number}: expected a list or text after ':' in the loop header")
+                statements.append(("foreach", (each.group(1), each.group(2).strip(), body), line.number))
+            else:
+                statements.append(("while", (condition, body), line.number))
             continue
         if line.text.startswith(":<"):
             statements.append(("return", line.text[2:].strip(), line.number))
@@ -497,6 +504,21 @@ def run(statements, env, functions=None, in_function=False):
                     if condition is None or evaluate(condition, env, functions):
                         run(body, env, functions, in_function)
                         break
+                continue
+            if kind == "foreach":
+                variable, source, body = payload
+                collection = evaluate(source, env, functions)
+                if isinstance(collection, list):
+                    items = [copy_value(item) for item in collection]  # snapshot: changes inside the loop don't affect it
+                elif isinstance(collection, str):
+                    items = list(collection)
+                else:
+                    raise SigilError("can only loop over a list or text")
+                if len(items) > MAX_LOOP_ITERATIONS:
+                    raise SigilError(f"loop exceeded {MAX_LOOP_ITERATIONS:,} iterations")
+                for item in items:
+                    env[variable] = item  # items are already private copies, so no aliasing with the list
+                    run(body, env, functions, in_function)
                 continue
             if kind == "while":
                 condition, body = payload

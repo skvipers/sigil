@@ -32,6 +32,15 @@
     "control": {
       "patterns": [
         {
+          "comment": "loop over elements: @%item : <list or text>:  (the ':' after the variable reads as 'in')",
+          "match": "^\\s*(@)\\s*(%[A-Za-z_][A-Za-z_0-9]*)\\s*(:)(?=\\s*\\S)",
+          "captures": {
+            "1": { "name": "keyword.control.sigil" },
+            "2": { "name": "variable.other.sigil" },
+            "3": { "name": "keyword.control.foreach.sigil" }
+          }
+        },
+        {
           "comment": "if / else-if / while at the start of a line",
           "match": "^\\s*(>\\s*\\?|\\?|@)",
           "captures": { "1": { "name": "keyword.control.sigil" } }
