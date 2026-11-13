@@ -1,0 +1,95 @@
+=== input-reads-numbers-and-text
+--- sg
+%a = <:
+%b = <:
+%c = <:
+%d = <:
+%e = <:
+>: %a + 1
+>: %b + 1
+>: %c
+>: %d + 1
+>: %e + 1
+--- in
+41
+1.5
+abc
+-3
++7
+--- out
+42
+2.5
+abc
+-2
+8
+
+=== input-that-only-looks-numeric-stays-text
+--- sg
+%a = <:
+%b = <:
+>: %a + 1
+>: %b + 1
+--- in
+1e5
+1,5
+--- out
+1e51
+1,51
+
+=== input-text-is-kept-as-typed-numbers-ignore-surrounding-blanks
+--- sg
+%a = <:
+%b = <:
+>: '[' + %a + ']'
+>: %b + 1
+--- in
+  hi  there
+ 12<TAB>
+--- out
+[  hi  there]
+13
+
+=== reprompt-until-a-number-with-isnum
+--- sg
+%n = <:
+@!#isnum(%n):
+    >: 'again'
+    %n = <:
+>: %n + 1
+--- in
+x
+
+1,5
+41
+--- out
+again
+again
+again
+42
+
+=== input-can-fill-a-list-element
+--- sg
+%l = [0, 0]
+%l[1] = <:
+>: %l
+--- in
+7
+--- out
+[0, 7]
+
+=== coloured-output
+--- sg
+>:E2 'x'
+>:I6 'green'
+>:A7 'red'
+--- out
+<ESC>[38;5;143mx<ESC>[0m
+<ESC>[38;5;76mgreen<ESC>[0m
+<ESC>[38;5;166mred<ESC>[0m
+
+=== coloured-output-takes-an-expression
+--- sg
+%n = 3
+>:E2 'n = ' + %n
+--- out
+<ESC>[38;5;143mn = 3<ESC>[0m

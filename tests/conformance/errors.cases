@@ -1,0 +1,150 @@
+=== err-undefined-variable
+--- sg
+%a = 1
+>: %zz
+--- err
+Sigil error: line 2: undefined variable: %zz
+
+=== err-output-before-the-error-is-kept
+--- sg
+>: 'before'
+>: %zz
+--- out
+before
+--- err
+Sigil error: line 2: undefined variable: %zz
+
+=== err-division-by-zero
+--- sg
+>: 1 / 0
+--- err
+Sigil error: line 1: division by zero
+
+=== err-unknown-system-call-with-a-hint
+--- sg
+>: #data
+--- err
+Sigil error: line 1: unknown system call: #data (did you mean #date?)
+
+=== err-reports-the-innermost-line
+--- sg
+? true:
+    @true:
+        %a = 1
+        >: %zz
+--- err
+Sigil error: line 4: undefined variable: %zz
+
+=== err-inside-a-function-reports-the-function-line
+--- sg
+$f(%n):
+    :< 1 / %n
+>: $f(0)
+--- err
+Sigil error: line 2: division by zero
+
+=== err-index-out-of-range
+--- sg
+%l = [1, 2, 3]
+>: %l[3]
+--- err
+Sigil error: line 2: index 3 out of range (length 3)
+
+=== err-negative-index
+--- sg
+%l = [1, 2, 3]
+>: %l[-1]
+--- err
+Sigil error: line 2: index -1 out of range (length 3)
+
+=== err-index-must-be-whole
+--- sg
+%l = [1]
+>: %l['a']
+--- err
+Sigil error: line 2: index must be a whole number
+
+=== err-assign-into-text
+--- sg
+%s = 'abc'
+%s[0] = 'x'
+--- err
+Sigil error: line 2: only list elements can be assigned (text is read-only)
+
+=== err-num-names-the-text
+--- sg
+>: #num('abc')
+--- err
+Sigil error: line 1: #num cannot convert 'abc' to a number
+
+=== err-foreach-over-a-number
+--- sg
+@%n : 5:
+    >: 1
+--- err
+Sigil error: line 1: can only loop over a list or text
+
+=== err-return-outside-a-function
+--- sg
+:< 1
+--- err
+Sigil error: line 1: :< can only be used inside a function
+
+=== err-else-without-if
+--- sg
+>
+    >: 'x'
+--- err
+Sigil error: line 1: else branch without a matching condition
+
+=== err-bad-indentation
+--- sg
+? true:
+  >: 'x'
+--- err
+Sigil error: line 2: indentation must use tabs or groups of four spaces
+
+=== err-wrong-argument-count
+--- sg
+$s(%a, %b):
+    :< %a
+>: $s(1)
+--- err
+Sigil error: line 3: $s expects 2 argument(s), got 1
+
+=== err-undefined-function
+--- sg
+>: $nope()
+--- err
+Sigil error: line 1: undefined function: $nope
+
+=== err-invalid-operation-is-an-error-not-a-crash
+--- sg
+>: 'a' - 1
+--- err~
+Sigil error: line 1: invalid operation
+
+=== err-input-ended
+--- sg
+%a = <:
+--- err
+Sigil error: line 1: input ended before a value was entered
+
+=== err-rnd-bad-range
+--- sg
+>: #rnd(10, 1)
+--- err
+Sigil error: line 1: #rnd lower bound must not exceed upper bound
+
+=== err-repetition-is-capped
+--- sg
+>: [0] * 100000000
+--- err
+Sigil error: line 1: result would exceed 1,000,000 elements
+
+=== err-add-must-be-assigned-back
+--- sg
+%l = [1]
+#add(%l, 2)
+--- err
+Sigil error: line 2: unknown statement: #add(%l, 2)

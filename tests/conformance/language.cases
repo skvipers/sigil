@@ -1,0 +1,278 @@
+=== print-values
+--- sg
+>: 42
+>: 2.5
+>: 'привет'
+>: -3
+--- out
+42
+2.5
+привет
+-3
+
+=== arithmetic
+--- sg
+>: 2 + 3 * 4
+>: (2 + 3) * 4
+>: 10 - 2 - 3
+>: -5 + 2
+>: 7 / 2
+>: 8 / 2
+>: 2 + 0.22
+>: 100000 * 100000
+--- out
+14
+20
+5
+-3
+3.5
+4.0
+2.22
+10000000000
+
+=== variables-and-reassignment
+--- sg
+%a = 1
+%b = %a + 1
+%a = %b * 10
+>: %a
+>: %b
+--- out
+20
+2
+
+=== text-and-numbers
+--- sg
+>: 'кусок ' + 5
+>: 5 + ' кусков'
+>: '10' + 9
+>: 'a' + 'b' + 'c'
+--- out
+кусок 5
+5 кусков
+109
+abc
+
+=== comparison-with-text-compares-as-text
+--- sg
+>: '10' < 9
+>: 10 < 9
+>: 1 == '1'
+>: 'a' == 'a'
+>: 'a' != 'b'
+--- out
+True
+False
+True
+True
+True
+
+=== logic-operators
+--- sg
+>: 1 < 2 & 2 < 3
+>: 1 > 2 | 2 < 3
+>: !(1 == 1)
+>: 5 != 5
+>: !5 == 6
+>: true & !false
+>: false | false
+--- out
+True
+True
+False
+False
+True
+True
+False
+
+=== logic-short-circuit
+--- sg
+>: 1 > 2 & 1 / 0 > 1
+>: 1 < 2 | 1 / 0 > 1
+--- out
+False
+True
+
+=== if-elif-else
+--- sg
+@%x : [9, 5, 1]:
+    ? %x > 5:
+        >: 'big'
+    > ? %x == 5:
+        >: 'eq'
+    >
+        >: 'small'
+--- out
+big
+eq
+small
+
+=== nested-if
+--- sg
+@%x : [1, 2, 3, 4]:
+    ? %x > 1:
+        ? %x > 3:
+            >: 'gt3'
+        >
+            >: 'mid'
+    >
+        >: 'low'
+--- out
+low
+mid
+mid
+gt3
+
+=== while-countdown
+--- sg
+%a = 3
+@%a > 0:
+    >: %a
+    %a = %a - 1
+>: 'done'
+--- out
+3
+2
+1
+done
+
+=== while-with-false-condition-never-runs
+--- sg
+@false:
+    >: 'never'
+>: 'after'
+--- out
+after
+
+=== foreach-over-list-and-text
+--- sg
+@%x : [10, 20, 30]:
+    >: %x + 1
+@%c : 'абв':
+    >: %c
+--- out
+11
+21
+31
+а
+б
+в
+
+=== foreach-variable-keeps-the-last-value
+--- sg
+@%x : [1, 2, 3]:
+    %y = %x
+>: %x
+--- out
+3
+
+=== foreach-iterates-over-a-snapshot
+--- sg
+%l = [1, 2]
+@%x : %l:
+    %l = #add(%l, 9)
+    >: %x
+>: %l
+--- out
+1
+2
+[1, 2, 9, 9]
+
+=== nested-loops
+--- sg
+@%a : [1, 2]:
+    @%b : 'xy':
+        >: %a + %b
+--- out
+1x
+1y
+2x
+2y
+
+=== functions
+--- sg
+$sum(%a, %b):
+    :< %a + %b
+>: $sum(2, 3)
+$greet(%name):
+    :< 'привет, ' + %name
+>: $greet('мир')
+--- out
+5
+привет, мир
+
+=== recursion
+--- sg
+$fact(%n):
+    ? %n < 2:
+        :< 1
+    :< %n * $fact(%n - 1)
+>: $fact(10)
+>: $fact(20)
+--- out
+3628800
+2432902008176640000
+
+=== function-sees-globals-but-does-not-change-them
+--- sg
+%g = 1
+$f():
+    %g = 2
+    :< %g
+>: $f()
+>: %g
+--- out
+2
+1
+
+=== return-from-inside-a-loop
+--- sg
+$first(%l, %want):
+    @%x : %l:
+        ? %x == %want:
+            :< 'found'
+    :< 'missing'
+>: $first([1, 2, 3], 2)
+>: $first([1, 2, 3], 7)
+--- out
+found
+missing
+
+=== comments
+--- sg
+; full line
+%a = 3 ; trailing
+>: %a ; shown
+>: 'a;b ; c'
+--- out
+3
+a;b ; c
+
+=== comment-lines-do-not-affect-indentation
+--- sg
+? true:
+; comment in column zero
+    >: 'a'
+  ; two spaces
+    >: 'b'
+--- out
+a
+b
+
+=== tabs-and-four-spaces-both-indent
+--- sg
+? true:
+<TAB>>: 'tab'
+? true:
+    >: 'spaces'
+--- out
+tab
+spaces
+
+=== sigils-inside-strings-are-plain-text
+--- sg
+>: 'cost %a $x #rnd ! & | ~ ; true'
+>: 'untrue falsehood'
+--- out
+cost %a $x #rnd ! & | ~ ; true
+untrue falsehood

@@ -25,6 +25,14 @@ python sigil.py main.sg
 python -m unittest discover -s tests -v
 ```
 
+Кроме проверок на Python, есть **набор примеров, не привязанный к реализации**: [tests/conformance](tests/conformance). Каждый пример — программа, её ввод и точный ожидаемый вывод (и текст ошибки). Они запускаются через командную строку, поэтому ими можно проверить любую другую реализацию Sigil, например порт на другом языке:
+
+```
+SIGIL_CMD="путь/к/sigil.exe" python -m unittest tests.test_conformance
+```
+
+Требования к реализации и формат файлов `.cases` описаны в начале [tests/test_conformance.py](tests/test_conformance.py).
+
 ## Синтаксис за минуту
 
 | Символ | Значение | Пример |
