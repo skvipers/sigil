@@ -18,6 +18,7 @@ TEXT_CALLS = {
     "__lower": ("lower", str.lower),
     "__upper": ("upper", str.upper),
     "__num": ("num", lambda text: to_number(text)),  # lambda: to_number is defined further down
+    "__isnum": ("isnum", lambda text: parse_number(text) is not None),
 }
 TEXT_CALL_NAMES = tuple(name for name, _ in TEXT_CALLS.values())
 # Two-argument calls: #name(a, b) -> (name, usage shown in error messages).
@@ -274,8 +275,9 @@ def evaluate(expression: str, env: dict, functions=None):
             argument = visit(node.args[0])
             if name == "len" and isinstance(argument, list):
                 return len(argument)
-            if name == "num" and isinstance(argument, (int, float)) and not isinstance(argument, bool):
-                return argument  # already a number: pass it through unchanged (no text round trip)
+            if name in ("num", "isnum") and isinstance(argument, (int, float)) and not isinstance(argument, bool):
+                # already a number: no text round trip (a float like 1e+20 would not parse back)
+                return argument if name == "num" else True
             return function(sigil_string(argument))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in PAIR_CALLS:
             name, usage = PAIR_CALLS[node.func.id]

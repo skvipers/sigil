@@ -338,6 +338,49 @@ class Num(unittest.TestCase):
             self.assertIn("cannot convert", error_of(f">: #num('{spelling}')"), spelling)
 
 
+class IsNum(unittest.TestCase):
+    GOOD = ("'42'", "' -7 '", "'+5'", "'007'", "'2.5'", "'.5'", "'5.'", "5", "2.5", "-3")
+    BAD = ("'abc'", "''", "' '", "'1,5'", "'1e5'", "'12abc'", "'--1'", "'1.2.3'", "'٣'", "[1]", "true", "#date")
+
+    def test_true_for_numbers_and_numeric_text(self):
+        for value in self.GOOD:
+            self.assertEqual(out_lines(f">: #isnum({value})"), ["True"], value)
+
+    def test_false_for_everything_else_and_never_an_error(self):
+        for value in self.BAD:
+            self.assertEqual(out_lines(f">: #isnum({value})"), ["False"], value)
+
+    def test_agrees_with_num_on_every_sample(self):
+        # #isnum is true exactly when #num succeeds
+        for value in self.GOOD + self.BAD:
+            if out_lines(f">: #isnum({value})") == ["True"]:
+                out_lines(f">: #num({value})")  # must not raise
+            else:
+                self.assertIn("cannot convert", error_of(f">: #num({value})"), value)
+
+    def test_agrees_with_input(self):
+        for spelling in ("41", "-3", "+3", "007", "1.5", ".5", "5.", "1e5", "1,5", "abc", "٣", ""):
+            read_as_number = out_lines("%a = <:\n>: #isnum(%a)", spelling + "\n")
+            self.assertEqual(read_as_number, out_lines(f">: #isnum('{spelling}')"), spelling)
+
+    def test_float_that_prints_with_an_exponent_is_still_a_number(self):
+        self.assertEqual(out_lines("%x = 100000000000.0 * 100000000000.0\n>: #isnum(%x)"), ["True"])
+
+    def test_works_with_not_in_conditions(self):
+        src = "%v = 'x'\n? !#isnum(%v):\n\t>: 'not a number'\n>\n\t>: 'number'"
+        self.assertEqual(out_lines(src), ["not a number"])
+        self.assertEqual(out_lines(src.replace("'x'", "'12'")), ["number"])
+
+    def test_reprompt_loop(self):
+        src = ("%n = <:\n@!#isnum(%n):\n\t>: 'again'\n\t%n = <:\n>: %n + 1")
+        self.assertEqual(out_lines(src, "x\n\n1,5\n41\n"), ["again", "again", "again", "42"])
+
+    def test_argument_count_and_hint(self):
+        self.assertIn("#isnum expects exactly one argument", error_of(">: #isnum('1', '2')"))
+        self.assertIn("#isnum expects exactly one argument", error_of(">: #isnum"))
+        self.assertIn("did you mean #isnum?", error_of(">: #isnun('1')"))
+
+
 class JoinSplit(unittest.TestCase):
     def test_join_basic(self):
         self.assertEqual(out_lines(">: #join([1, 'a', 2.5], ', ')"), ["1, a, 2.5"])
@@ -732,11 +775,16 @@ class ExamplePrograms(unittest.TestCase):
         for stdin, expected in cases.items():
             self.assertEqual(self.run_file("sum_example.sg", stdin)[-1], expected, repr(stdin))
 
-    def test_sum_example_reports_a_bad_token_with_its_line(self):
-        source = (ROOT / "sum_example.sg").read_text(encoding="utf-8")
-        message = error_of(source, "3 x 5\n")
-        self.assertIn("cannot convert 'x' to a number", message)
-        self.assertTrue(message.startswith("line 10:"), message)  # the %sum + #num(...) line
+    def test_sum_example_skips_bad_tokens_with_a_warning(self):
+        out = "\n".join(self.run_file("sum_example.sg", "3 x 5 1,5\n"))
+        self.assertIn("Пропущено, это не число: x", out)
+        self.assertIn("Пропущено, это не число: 1,5", out)
+        self.assertIn("Чисел: 2, сумма: 8", out)
+
+    def test_sum_example_does_not_warn_about_empty_pieces(self):
+        out = "\n".join(self.run_file("sum_example.sg", "  3   4  \n"))
+        self.assertNotIn("Пропущено", out)
+        self.assertIn("Чисел: 2, сумма: 7", out)
 
     def test_list_example(self):
         self.assertEqual(self.run_file("list_example.sg"), [
