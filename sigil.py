@@ -17,6 +17,7 @@ TEXT_CALLS = {
     "__len": ("len", len),
     "__lower": ("lower", str.lower),
     "__upper": ("upper", str.upper),
+    "__num": ("num", lambda text: to_number(text)),  # lambda: to_number is defined further down
 }
 TEXT_CALL_NAMES = tuple(name for name, _ in TEXT_CALLS.values())
 # Two-argument calls: #name(a, b) -> (name, usage shown in error messages).
@@ -273,6 +274,8 @@ def evaluate(expression: str, env: dict, functions=None):
             argument = visit(node.args[0])
             if name == "len" and isinstance(argument, list):
                 return len(argument)
+            if name == "num" and isinstance(argument, (int, float)) and not isinstance(argument, bool):
+                return argument  # already a number: pass it through unchanged (no text round trip)
             return function(sigil_string(argument))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in PAIR_CALLS:
             name, usage = PAIR_CALLS[node.func.id]
@@ -324,12 +327,26 @@ def read_value(prompt: str = ""):
         raw = input(prompt)
     except EOFError as exc:
         raise SigilError("input ended before a value was entered") from exc
-    value = raw.strip()
-    if re.fullmatch(r"[+-]?\d+", value):
+    number = parse_number(raw)
+    return raw if number is None else number
+
+
+def parse_number(text: str):
+    """The one place that decides what a number looks like: [+-]digits, optionally with a '.' part.
+    Returns int / float, or None if the text is not a number. ASCII digits only; no exponent, no comma."""
+    value = text.strip()
+    if re.fullmatch(r"[+-]?[0-9]+", value):
         return int(value)
-    if re.fullmatch(r"[+-]?(?:\d+\.\d*|\d*\.\d+)", value):
+    if re.fullmatch(r"[+-]?(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+)", value):
         return float(value)
-    return raw
+    return None
+
+
+def to_number(text: str):
+    number = parse_number(text)
+    if number is None:
+        raise SigilError(f"#num cannot convert {text!r} to a number")
+    return number
 
 
 def sigil_string(value):

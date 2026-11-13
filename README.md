@@ -60,7 +60,7 @@ python -m unittest discover -s tests -v
 | `#rnd('abc')` | случайный символ |
 | `#rnd(5, 'abc')` | строка длины 5 из алфавита |
 
-Остальное: `#date` — сегодняшняя дата, `#len(x)` — длина текста или число элементов списка, `#lower(x)` и `#upper(x)` — текст в нижнем или верхнем регистре, `#add(список, значение)` — новый список с добавленным элементом, `#join(список, разделитель)` — список в текст, `#split(текст, разделитель)` — текст в список (пустой разделитель режет на символы).
+Остальное: `#date` — сегодняшняя дата, `#len(x)` — длина текста или число элементов списка, `#lower(x)` и `#upper(x)` — текст в нижнем или верхнем регистре, `#num(x)` — текст в число (на нечисловом тексте ошибка с названием текста), `#add(список, значение)` — новый список с добавленным элементом, `#join(список, разделитель)` — список в текст, `#split(текст, разделитель)` — текст в список (пустой разделитель режет на символы).
 
 ### Списки
 
@@ -99,7 +99,7 @@ python -m unittest discover -s tests -v
     >: 'Error: unknown operation'
 ```
 
-Полная версия — [main.sg](main.sg). Ещё примеры: [hangman.sg](hangman.sg) (виселица: списки, индексы строк, функция), [rps.sg](rps.sg) (камень-ножницы-бумага до трёх побед), [guess_game.sg](guess_game.sg) (игра-угадайка), [function_example.sg](function_example.sg), [loop_example.sg](loop_example.sg), [rnd_example.sg](rnd_example.sg), [logic_example.sg](logic_example.sg), [list_example.sg](list_example.sg), [comment_example.sg](comment_example.sg).
+Полная версия — [main.sg](main.sg). Ещё примеры: [hangman.sg](hangman.sg) (виселица: списки, индексы строк, функция), [rps.sg](rps.sg) (камень-ножницы-бумага до трёх побед), [guess_game.sg](guess_game.sg) (игра-угадайка), [function_example.sg](function_example.sg), [loop_example.sg](loop_example.sg), [rnd_example.sg](rnd_example.sg), [logic_example.sg](logic_example.sg), [list_example.sg](list_example.sg), [sum_example.sg](sum_example.sg) (разбор чисел из строки), [comment_example.sg](comment_example.sg).
 
 ## HUSTL: цвет в консоли
 

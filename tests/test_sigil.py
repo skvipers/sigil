@@ -279,6 +279,65 @@ class Lists(unittest.TestCase):
         self.assertEqual(out_lines(src), ["15", "9"])
 
 
+class Num(unittest.TestCase):
+    def test_integers(self):
+        for text, expected in (("'42'", "42"), ("' -7 '", "-7"), ("'+5'", "5"), ("'0'", "0"), ("'007'", "7")):
+            self.assertEqual(out_lines(f">: #num({text})"), [expected], text)
+
+    def test_floats(self):
+        for text, expected in (("'2.5'", "2.5"), ("'.5'", "0.5"), ("'5.'", "5.0"), ("'-0.25'", "-0.25")):
+            self.assertEqual(out_lines(f">: #num({text})"), [expected], text)
+
+    def test_result_is_a_real_number(self):
+        self.assertEqual(out_lines(">: #num('3') + #num('4')"), ["7"])
+        self.assertEqual(out_lines(">: #num('5') / 2"), ["2.5"])
+        self.assertEqual(out_lines(">: #num('10') > #num('9')"), ["True"])  # numbers, not text order
+        self.assertEqual(out_lines(">: '10' > '9'"), ["False"])
+        self.assertEqual(out_lines(">: #num('3') + '4'"), ["34"])  # + with text is still concatenation
+
+    def test_number_passes_through_unchanged(self):
+        self.assertEqual(out_lines(">: #num(5)"), ["5"])
+        self.assertEqual(out_lines(">: #num(2.5)"), ["2.5"])
+        # a float whose text form is '1e+20' must not be re-parsed as text
+        self.assertEqual(out_lines("%x = 100000000000.0 * 100000000000.0\n>: #num(%x) == %x"), ["True"])
+
+    def test_not_a_number_is_an_error_naming_the_text(self):
+        for text in ("'abc'", "''", "' '", "'1,5'", "'1e5'", "'12abc'", "'--1'", "'1.2.3'", "'٣'"):
+            message = error_of(f">: #num({text})")
+            self.assertIn("#num cannot convert", message, text)
+            self.assertTrue(message.startswith("line 1:"), text)
+        self.assertIn("cannot convert 'abc' to a number", error_of(">: #num('abc')"))
+
+    def test_other_types_are_errors(self):
+        for expression in ("[1]", "true", "#date"):
+            self.assertIn("#num cannot convert", error_of(f">: #num({expression})"), expression)
+
+    def test_argument_count(self):
+        self.assertIn("#num expects exactly one argument", error_of(">: #num('1', '2')"))
+        self.assertIn("#num expects exactly one argument", error_of(">: #num"))
+
+    def test_typo_hint(self):
+        self.assertIn("did you mean #num?", error_of(">: #nun('1')"))
+
+    def test_sum_of_split_pieces(self):
+        src = ("%p = #split('3 4 5', ' ')\n%i = 0\n%sum = 0\n@%i < #len(%p):\n"
+               "\t%sum = %sum + #num(%p[%i])\n\t%i = %i + 1\n>: %sum")
+        self.assertEqual(out_lines(src), ["12"])
+
+    def test_join_split_num_round_trip(self):
+        self.assertEqual(out_lines(">: #num(#join(#split('1 2 3', ' '), ''))"), ["123"])
+
+    def test_input_and_num_agree_on_what_a_number_is(self):
+        # <: reads these as numbers; #num accepts exactly the same spellings
+        for spelling in ("41", "-3", "+3", "007", "1.5", ".5", "5."):
+            from_input = out_lines("%a = <:\n>: %a + 1", spelling + "\n")
+            from_num = out_lines(f">: #num('{spelling}') + 1")
+            self.assertEqual(from_input, from_num, spelling)
+        for spelling in ("1e5", "1,5", "abc", "٣"):
+            self.assertEqual(out_lines("%a = <:\n>: %a + 1", spelling + "\n"), [spelling + "1"], spelling)
+            self.assertIn("cannot convert", error_of(f">: #num('{spelling}')"), spelling)
+
+
 class JoinSplit(unittest.TestCase):
     def test_join_basic(self):
         self.assertEqual(out_lines(">: #join([1, 'a', 2.5], ', ')"), ["1, a, 2.5"])
@@ -666,6 +725,18 @@ class ExamplePrograms(unittest.TestCase):
         out = self.play_hangman(["с", "и", "г", "л"], pick="high")
         self.assertIn("Слово из 5 букв", out)
         self.assertIn("Вы выиграли! Слово: сигил", out)
+
+    def test_sum_example(self):
+        cases = {"3 4 5\n": "Чисел: 3, сумма: 12", "3  4   5\n": "Чисел: 3, сумма: 12",
+                 "1.5 2.5 -1\n": "Чисел: 3, сумма: 3.0", "7\n": "Чисел: 1, сумма: 7", "\n": "Чисел: 0, сумма: 0"}
+        for stdin, expected in cases.items():
+            self.assertEqual(self.run_file("sum_example.sg", stdin)[-1], expected, repr(stdin))
+
+    def test_sum_example_reports_a_bad_token_with_its_line(self):
+        source = (ROOT / "sum_example.sg").read_text(encoding="utf-8")
+        message = error_of(source, "3 x 5\n")
+        self.assertIn("cannot convert 'x' to a number", message)
+        self.assertTrue(message.startswith("line 10:"), message)  # the %sum + #num(...) line
 
     def test_list_example(self):
         self.assertEqual(self.run_file("list_example.sg"), [
