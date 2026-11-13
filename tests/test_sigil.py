@@ -85,6 +85,41 @@ class Comments(unittest.TestCase):
         self.assertEqual(out_lines(">: 'x' ; 'y;z'"), ["x"])
 
 
+class ExpressionCache(unittest.TestCase):
+    def setUp(self):
+        sigil.compile_expression.cache_clear()
+
+    def test_loop_body_is_translated_once_not_per_iteration(self):
+        src = "%i = 0\n@%i < 200:\n\t%i = %i + 1\n"
+        with mock.patch.object(sigil, "prepare_expr", wraps=sigil.prepare_expr) as spy:
+            run_sigil(src)
+        # three distinct expressions: '0', '%i < 200', '%i + 1'
+        self.assertEqual(spy.call_count, 3)
+
+    def test_function_body_is_translated_once_across_calls(self):
+        src = "$f(%n):\n\t:< %n + 1\n%t = 0\n@%t < 50:\n\t%t = $f(%t)\n"
+        with mock.patch.object(sigil, "prepare_expr", wraps=sigil.prepare_expr) as spy:
+            run_sigil(src)
+        self.assertEqual(spy.call_count, 4)  # '0', '%t < 50', '$f(%t)', '%n + 1'
+
+    def test_cache_does_not_mix_up_variables(self):
+        # same text, different values: only the translation is cached, not results
+        self.assertEqual(out_lines("@%x : [1, 2, 3]:\n\t>: %x * 10"), ["10", "20", "30"])
+
+    def test_errors_are_not_cached_and_repeat(self):
+        for _ in range(3):
+            self.assertIn("unknown system call: #data", error_of(">: #data"))
+        for _ in range(3):
+            self.assertIn("invalid expression", error_of(">: 1 +"))
+
+    def test_bad_expression_inside_a_loop_still_reports_its_line(self):
+        self.assertTrue(error_of("%i = 0\n@%i < 3:\n\t>: 1 +\n\t%i = %i + 1").startswith("line 3: invalid expression"))
+
+    def test_assignment_target_parsing_is_cached_and_stays_correct(self):
+        src = "%l = [0, 0]\n@%i : [0, 1, 0, 1]:\n\t%l[%i] = %l[%i] + 1\n>: %l"
+        self.assertEqual(out_lines(src), ["[2, 2]"])
+
+
 class Membership(unittest.TestCase):
     def test_in_and_not_in(self):
         self.assertEqual(out_lines(">: 'r' ~ 'rps'"), ["True"])

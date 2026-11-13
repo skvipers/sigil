@@ -6,6 +6,7 @@ import colorsys
 import copy
 import datetime as dt
 import difflib
+import functools
 import re
 import random
 import sys
@@ -184,7 +185,7 @@ def prepare_code(code: str) -> str:
     return code
 
 
-def prepare_expr(expression: str, env: dict):
+def prepare_expr(expression: str):
     # String literals are kept verbatim: no Sigil substitution happens inside quotes.
     parts = re.split(r"('[^']*')", expression)
     out = []
@@ -193,13 +194,21 @@ def prepare_expr(expression: str, env: dict):
     return "".join(out).strip()
 
 
+@functools.lru_cache(maxsize=4096)
+def compile_expression(expression: str):
+    """Sigil expression text -> syntax tree. Cached: a loop body is translated and parsed once,
+    not on every iteration (this was ~2/3 of the run time). Errors are not cached: lru_cache
+    does not store exceptions, so a bad expression raises every time it is reached."""
+    prepared = prepare_expr(expression)
+    try:
+        return ast.parse(prepared, mode="eval")
+    except SyntaxError as exc:
+        raise SigilError(f"invalid expression: {prepared}") from exc
+
+
 def evaluate(expression: str, env: dict, functions=None):
     functions = functions if functions is not None else {}
-    expression = prepare_expr(expression, env)
-    try:
-        tree = ast.parse(expression, mode="eval")
-    except SyntaxError as exc:
-        raise SigilError(f"invalid expression: {expression}") from exc
+    tree = compile_expression(expression)  # the tree is only read, never modified, so sharing it is safe
 
     def visit(node):
         if isinstance(node, ast.Expression):
@@ -389,6 +398,7 @@ def check_index(index, length: int) -> int:
     return index
 
 
+@functools.lru_cache(maxsize=4096)
 def find_assignment(text: str) -> int:
     """Position of the '=' of an assignment (outside quotes/brackets, not part of ==, !=, <=, >=), else -1."""
     depth, in_string, i = 0, False, 0
@@ -409,8 +419,9 @@ def find_assignment(text: str) -> int:
     return -1
 
 
+@functools.lru_cache(maxsize=4096)
 def parse_target(target: str):
-    """'%name' or '%name[i][j]' -> (name, [index expression, ...])."""
+    """'%name' or '%name[i][j]' -> (name, (index expression, ...)). A tuple, because the result is cached."""
     match = re.match(r"%([A-Za-z_][A-Za-z_0-9]*)", target)
     if not match:
         raise SigilError("assignment target must be a %variable or a %list[index]")
@@ -437,7 +448,7 @@ def parse_target(target: str):
             raise SigilError("assignment target has an empty or unclosed [index]")
         indexes.append(rest[pos + 1:end])
         pos = end + 1
-    return name, indexes
+    return name, tuple(indexes)
 
 
 def assign_indexed(env, name, index_expressions, value, functions):
@@ -547,8 +558,7 @@ def run(statements, env, functions=None, in_function=False):
             elif text == ":" or text.startswith(": "):
                 # The docs describe ':' as a continuation marker, not output.
                 pass
-            elif find_assignment(text) >= 0:
-                equals = find_assignment(text)
+            elif (equals := find_assignment(text)) >= 0:
                 name, index_expressions = parse_target(text[:equals].strip())
                 expression = text[equals + 1:].strip()
                 value = read_value() if expression == "<:" else evaluate(expression, env, functions)
