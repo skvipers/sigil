@@ -1,0 +1,5 @@
+$sum(%a, %b):
+	:< %a + %b
+
+%total = $sum(2, 3)
+>: %total

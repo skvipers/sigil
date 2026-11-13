@@ -1,0 +1,58 @@
+$score(%tries, %limit):
+	%left = %limit - %tries + 1
+	? %left <= 0: ; попыток больше лимита — очков нет, а не минус
+		:< 0
+	:< %left * 100 / %limit
+
+>:E2 'NUMBER + LETTER QUEST'
+%today = #date
+%secret = #rnd(1, 10)
+%secret_letter = #rnd('abcdefghijklmnopqrstuvwxyz')
+%bonus_code = #rnd(4, 'abcdefghijklmnopqrstuvwxyz')
+%fortune = #rnd
+%guess = 0
+%tries = 0
+%limit = 10
+
+>: 'Today: ' + %today
+>: 'Guess the number from 1 to 10.'
+@%guess != %secret:
+	>:E2.210 'Your number guess:'
+	%guess = <:
+	%tries = %tries + 1
+	? %guess < %secret:
+		>: 'Too low!'
+	> ? %guess > %secret:
+		>: 'Too high!'
+
+>:E2 'Number found! Score: ' + $score(%tries, %limit)
+>: 'Now guess the secret lowercase English letter.'
+%letter_guess = ''
+%letter_tries = 0
+@%letter_guess != %secret_letter:
+	>: 'Your letter guess:'
+	%letter_guess = <:
+	%letter_tries = %letter_tries + 1
+	? %letter_guess < %secret_letter:
+		>: 'The secret letter is later in the alphabet.'
+	> ? %letter_guess > %secret_letter:
+		>: 'The secret letter is earlier in the alphabet.'
+
+>:E2 'You solved both rounds!'
+%total_tries = %tries + %letter_tries
+>: 'Number tries: ' + %tries
+>: 'Letter tries: ' + %letter_tries
+>: 'Total tries: ' + %total_tries
+>: 'Bonus code: ' + %bonus_code
+>: 'Fortune number: ' + %fortune
+? %letter_tries == 1:
+	>: 'First-try letter guess!'
+> ? %letter_tries > 10:
+	>: 'That was a long letter hunt!'
+>
+	>: 'Nice work!'
+? %fortune > 50:
+	>: 'Fortune says: lucky day!'
+>
+	>: 'Fortune says: keep trying!'
+>:E2.750 'Thanks for playing!'

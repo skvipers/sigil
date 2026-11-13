@@ -1,0 +1,97 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sigil",
+  "scopeName": "source.sigil",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#control" },
+    { "include": "#io" },
+    { "include": "#systemCall" },
+    { "include": "#userFunction" },
+    { "include": "#variable" },
+    { "include": "#date" },
+    { "include": "#number" },
+    { "include": "#constant" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "(;).*$",
+      "name": "comment.line.semicolon.sigil",
+      "captures": { "1": { "name": "punctuation.definition.comment.sigil" } }
+    },
+    "string": {
+      "name": "string.quoted.single.sigil",
+      "begin": "'",
+      "end": "'|$",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.sigil" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.sigil" } }
+    },
+    "control": {
+      "patterns": [
+        {
+          "comment": "if / else-if / while at the start of a line",
+          "match": "^\\s*(>\\s*\\?|\\?|@)",
+          "captures": { "1": { "name": "keyword.control.sigil" } }
+        },
+        {
+          "comment": "else: a lone > on its own line",
+          "match": "^\\s*(>)\\s*$",
+          "captures": { "1": { "name": "keyword.control.else.sigil" } }
+        },
+        {
+          "comment": "return",
+          "match": ":<",
+          "name": "keyword.control.return.sigil"
+        }
+      ]
+    },
+    "io": {
+      "patterns": [
+        {
+          "comment": "coloured output: >:E2 or >:E2.210",
+          "match": "(>:)([A-Z][0-9](?:\\.[0-9]+)?)(?=\\s|$)",
+          "captures": {
+            "1": { "name": "keyword.other.output.sigil" },
+            "2": { "name": "constant.other.color.hustl.sigil" }
+          }
+        },
+        { "match": ">:", "name": "keyword.other.output.sigil" },
+        { "match": "<:", "name": "keyword.other.input.sigil" }
+      ]
+    },
+    "systemCall": {
+      "match": "#[A-Za-z_][A-Za-z_0-9]*",
+      "name": "support.function.builtin.sigil"
+    },
+    "userFunction": {
+      "match": "\\$[A-Za-z_][A-Za-z_0-9]*",
+      "name": "entity.name.function.sigil"
+    },
+    "variable": {
+      "match": "%[A-Za-z_][A-Za-z_0-9]*",
+      "name": "variable.other.sigil"
+    },
+    "date": {
+      "match": "(?<![\\w.])\\d{1,2}\\.\\d{1,2}\\.\\d{4}(?![\\w.])",
+      "name": "constant.numeric.date.sigil"
+    },
+    "number": {
+      "match": "(?<![\\w.])\\d+(?:\\.\\d+)?(?![\\w.])",
+      "name": "constant.numeric.sigil"
+    },
+    "constant": {
+      "match": "\\b(?:true|false)\\b",
+      "name": "constant.language.boolean.sigil"
+    },
+    "operator": {
+      "patterns": [
+        { "match": "==|!=|!~|<=|>=|<|>|~", "name": "keyword.operator.comparison.sigil" },
+        { "match": "[&|!]", "name": "keyword.operator.logical.sigil" },
+        { "match": "[+\\-*/]", "name": "keyword.operator.arithmetic.sigil" },
+        { "match": "=", "name": "keyword.operator.assignment.sigil" }
+      ]
+    }
+  }
+}

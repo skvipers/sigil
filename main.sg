@@ -1,0 +1,30 @@
+>: 'First number:'
+%a = <:
+
+>: 'Operation (+, -, *, /):'
+%op = <:
+
+>: 'Second number:'
+%b = <:
+
+? %op == '+':
+    %result = %a + %b
+    >: 'Result:'
+    >: %result
+> ? %op == '-':
+    %result = %a - %b
+    >: 'Result:'
+    >: %result
+> ? %op == '*':
+    %result = %a * %b
+    >: 'Result:'
+    >: %result
+> ? %op == '/':
+    ? %b == 0:
+        >: 'Error: division by zero'
+    >
+        %result = %a / %b
+        >: 'Result:'
+        >: %result
+>
+    >: 'Error: unknown operation'
