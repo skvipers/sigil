@@ -19,7 +19,13 @@ TEXT_CALLS = {
     "__upper": ("upper", str.upper),
 }
 TEXT_CALL_NAMES = tuple(name for name, _ in TEXT_CALLS.values())
-SYSTEM_CALLS = ("date", "rnd", "add") + TEXT_CALL_NAMES
+# Two-argument calls: #name(a, b) -> (name, usage shown in error messages).
+PAIR_CALLS = {
+    "__add": ("add", "(list, value)"),
+    "__join": ("join", "(list, separator)"),
+    "__split": ("split", "(text, separator)"),
+}
+SYSTEM_CALLS = ("date", "rnd") + tuple(name for name, _ in PAIR_CALLS.values()) + TEXT_CALL_NAMES
 MAX_LOOP_ITERATIONS = 1_000_000
 MAX_SEQUENCE_LENGTH = 1_000_000  # cap for '*' repetition of text and lists
 
@@ -150,7 +156,8 @@ def prepare_code(code: str) -> str:
             raise SigilError(f"unknown system call: #{call}{suffix}")
     code = re.sub(r"#date\b", "__sys_date", code)
     code = re.sub(r"#rnd\b", "__rnd", code)
-    code = re.sub(r"#add\b", "__add", code)
+    for name, _ in PAIR_CALLS.values():
+        code = re.sub(rf"#{name}\b", f"__{name}", code)
     for name in TEXT_CALL_NAMES:
         code = re.sub(rf"#{name}\b", f"__{name}", code)
     code = re.sub(r"\$([A-Za-z_][A-Za-z_0-9]*)", r"__fn_\1", code)
@@ -195,8 +202,9 @@ def evaluate(expression: str, env: dict, functions=None):
                 return dt.date.today()
             if node.id in TEXT_CALLS:
                 raise SigilError(f"#{TEXT_CALLS[node.id][0]} expects exactly one argument")
-            if node.id == "__add":
-                raise SigilError("#add expects exactly two arguments (list, value)")
+            if node.id in PAIR_CALLS:
+                name, usage = PAIR_CALLS[node.id]
+                raise SigilError(f"#{name} expects exactly two arguments {usage}")
             if node.id == "__rnd":
                 return random.SystemRandom().randint(0, 100)
             if node.id not in env:
@@ -266,13 +274,20 @@ def evaluate(expression: str, env: dict, functions=None):
             if name == "len" and isinstance(argument, list):
                 return len(argument)
             return function(sigil_string(argument))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__add":
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in PAIR_CALLS:
+            name, usage = PAIR_CALLS[node.func.id]
             args = [visit(arg) for arg in node.args]
             if len(args) != 2:
-                raise SigilError("#add expects exactly two arguments (list, value)")
-            if not isinstance(args[0], list):
-                raise SigilError("#add expects a list as the first argument")
-            return args[0] + [copy_value(args[1])]  # lists are values: a new list is returned
+                raise SigilError(f"#{name} expects exactly two arguments {usage}")
+            first, second = args
+            if name in ("add", "join") and not isinstance(first, list):
+                raise SigilError(f"#{name} expects a list as the first argument")
+            if name == "add":
+                return first + [copy_value(second)]  # lists are values: a new list is returned
+            if name == "join":
+                return sigil_string(second).join(sigil_string(item) for item in first)
+            text, separator = sigil_string(first), sigil_string(second)
+            return list(text) if separator == "" else text.split(separator)  # '' splits into characters
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id.startswith("__fn_"):
             name = node.func.id[5:]
             if name not in functions:

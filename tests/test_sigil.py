@@ -279,6 +279,65 @@ class Lists(unittest.TestCase):
         self.assertEqual(out_lines(src), ["15", "9"])
 
 
+class JoinSplit(unittest.TestCase):
+    def test_join_basic(self):
+        self.assertEqual(out_lines(">: #join([1, 'a', 2.5], ', ')"), ["1, a, 2.5"])
+        self.assertEqual(out_lines(">: #join(['a', 'b', 'c'], '')"), ["abc"])
+        self.assertEqual(out_lines(">: #join(['x'], '-')"), ["x"])
+        self.assertEqual(out_lines(">: #join([], '-')"), [""])
+
+    def test_join_uses_text_without_quotes_and_nests_as_text(self):
+        self.assertEqual(out_lines(">: #join(['a', [1, 'b']], '|')"), ["a|[1, 'b']"])
+
+    def test_join_separator_is_converted_to_text(self):
+        self.assertEqual(out_lines(">: #join([1, 2, 3], 0)"), ["10203"])
+
+    def test_join_returns_text(self):
+        self.assertEqual(out_lines(">: #len(#join(['ab', 'cd'], '--'))"), ["6"])
+
+    def test_split_basic(self):
+        self.assertEqual(out_lines(">: #split('a,b,c', ',')"), ["['a', 'b', 'c']"])
+        self.assertEqual(out_lines(">: #split('цикл индекс', ' ')"), ["['цикл', 'индекс']"])
+        self.assertEqual(out_lines(">: #split('a::b::c', '::')"), ["['a', 'b', 'c']"])
+
+    def test_split_keeps_empty_pieces(self):
+        self.assertEqual(out_lines(">: #split('a,,b', ',')"), ["['a', '', 'b']"])
+        self.assertEqual(out_lines(">: #split(',a,', ',')"), ["['', 'a', '']"])
+        self.assertEqual(out_lines(">: #split('', ',')"), ["['']"])
+
+    def test_split_without_separator_in_text(self):
+        self.assertEqual(out_lines(">: #split('abc', ',')"), ["['abc']"])
+
+    def test_split_empty_separator_gives_characters(self):
+        self.assertEqual(out_lines(">: #split('abc', '')"), ["['a', 'b', 'c']"])
+        self.assertEqual(out_lines(">: #split('', '')"), ["[]"])
+        self.assertEqual(out_lines(">: #len(#split('привет', ''))"), ["6"])
+
+    def test_split_pieces_are_text_not_numbers(self):
+        self.assertEqual(out_lines(">: #split('1,2', ',')[0] + 1"), ["11"])
+
+    def test_split_number_argument_is_converted_to_text(self):
+        self.assertEqual(out_lines(">: #split(12345, 3)"), ["['12', '45']"])
+
+    def test_round_trip(self):
+        src = "%s = 'a-b-c'\n>: #join(#split(%s, '-'), '-') == %s"
+        self.assertEqual(out_lines(src), ["True"])
+
+    def test_split_result_is_a_normal_list(self):
+        src = "%w = #split('x y z', ' ')\n%w[1] = 'Q'\n%w = #add(%w, 'w')\n>: %w\n>: 'Q' ~ %w"
+        self.assertEqual(out_lines(src), ["['x', 'Q', 'z', 'w']", "True"])
+
+    def test_argument_errors(self):
+        self.assertIn("#join expects exactly two arguments (list, separator)", error_of(">: #join([1])"))
+        self.assertIn("#split expects exactly two arguments (text, separator)", error_of(">: #split('a')"))
+        self.assertIn("#split expects exactly two arguments", error_of(">: #split"))
+        self.assertIn("#join expects a list as the first argument", error_of(">: #join('abc', ',')"))
+
+    def test_typo_hints(self):
+        self.assertIn("did you mean #join?", error_of(">: #joyn([], ',')"))
+        self.assertIn("did you mean #split?", error_of(">: #splt('a', ',')"))
+
+
 class CaseCalls(unittest.TestCase):
     def test_lower_upper(self):
         self.assertEqual(out_lines(">: #lower('HeLLo')"), ["hello"])
@@ -592,7 +651,8 @@ class ExamplePrograms(unittest.TestCase):
 
     def test_hangman_wrong_letters_are_listed_and_face_changes(self):
         out = self.play_hangman(["а", "ц", "и", "к", "л"])
-        self.assertIn("Названы: ['а']", out)
+        self.assertIn("Названы: а\n", out)  # joined with spaces, no quotes or brackets
+        self.assertIn("Названы: а ц\n", out)
         self.assertIn("^_^  ", out)   # 5 lives left
         self.assertIn("жизни: 5", out)
 
