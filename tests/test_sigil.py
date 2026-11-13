@@ -556,6 +556,57 @@ class ExamplePrograms(unittest.TestCase):
                 else:
                     self.assertIn("Компьютер победил", out, (me, cpu))
 
+    def play_hangman(self, letters, pick="low"):
+        class FixedRandom:
+            def randint(self, low, high):
+                return low if pick == "low" else high   # word index: first ('цикл') or last ('сигил')
+        with mock.patch.object(sigil.random, "SystemRandom", FixedRandom):
+            return "\n".join(self.run_file("hangman.sg", "\n".join(letters) + "\n"))
+
+    def test_hangman_win_without_mistakes(self):
+        out = self.play_hangman(["ц", "и", "к", "л"])
+        self.assertIn("Слово из 4 букв", out)
+        self.assertIn("Вы выиграли! Слово: цикл", out)
+        self.assertEqual(out.count("Нет такой буквы"), 0)
+        self.assertIn("цик_   жизни: 6", out)
+
+    def test_hangman_lose_after_six_mistakes(self):
+        out = self.play_hangman(list("абвгде"))
+        self.assertEqual(out.count("Нет такой буквы"), 6)
+        self.assertIn("Вы проиграли. Слово было: цикл", out)
+        self.assertNotIn("выиграли", out)
+        self.assertIn("жизни: 1", out)
+
+    def test_hangman_invalid_input_costs_nothing(self):
+        # repeat, latin, digit, empty, two letters, repeated upper-case: six rejections, no lives lost
+        out = self.play_hangman(["ц", "ц", "X", "5", "", "ци", "Ц", "и", "к", "л"])
+        self.assertEqual(out.count("Нужна одна новая русская буква:"), 6)
+        self.assertEqual(out.count("Нет такой буквы"), 0)
+        self.assertIn("Вы выиграли! Слово: цикл", out)
+        self.assertNotIn("жизни: 5", out)
+
+    def test_hangman_accepts_uppercase(self):
+        out = self.play_hangman(["Ц", "И", "К", "Л"])
+        self.assertEqual(out.count("Нужна одна новая русская буква:"), 0)
+        self.assertIn("Вы выиграли! Слово: цикл", out)
+
+    def test_hangman_wrong_letters_are_listed_and_face_changes(self):
+        out = self.play_hangman(["а", "ц", "и", "к", "л"])
+        self.assertIn("Названы: ['а']", out)
+        self.assertIn("^_^  ", out)   # 5 lives left
+        self.assertIn("жизни: 5", out)
+
+    def test_hangman_repeated_letter_in_word(self):
+        # 'сигил' contains 'и' twice: one guess opens both positions at once
+        out = self.play_hangman(["и", "с", "г", "л"], pick="high")
+        self.assertIn("_и_и_", out)
+        self.assertEqual(out.count("Нет такой буквы"), 0)
+
+    def test_hangman_picks_word_by_index(self):
+        out = self.play_hangman(["с", "и", "г", "л"], pick="high")
+        self.assertIn("Слово из 5 букв", out)
+        self.assertIn("Вы выиграли! Слово: сигил", out)
+
     def test_list_example(self):
         self.assertEqual(self.run_file("list_example.sg"), [
             "Было: [5, 3, 8, 1]",

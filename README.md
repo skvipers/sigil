@@ -99,7 +99,7 @@ python -m unittest discover -s tests -v
     >: 'Error: unknown operation'
 ```
 
-Полная версия — [main.sg](main.sg). Ещё примеры: [rps.sg](rps.sg) (камень-ножницы-бумага до трёх побед), [guess_game.sg](guess_game.sg) (игра-угадайка), [function_example.sg](function_example.sg), [loop_example.sg](loop_example.sg), [rnd_example.sg](rnd_example.sg), [logic_example.sg](logic_example.sg).
+Полная версия — [main.sg](main.sg). Ещё примеры: [hangman.sg](hangman.sg) (виселица: списки, индексы строк, функция), [rps.sg](rps.sg) (камень-ножницы-бумага до трёх побед), [guess_game.sg](guess_game.sg) (игра-угадайка), [function_example.sg](function_example.sg), [loop_example.sg](loop_example.sg), [rnd_example.sg](rnd_example.sg), [logic_example.sg](logic_example.sg), [list_example.sg](list_example.sg), [comment_example.sg](comment_example.sg).
 
 ## HUSTL: цвет в консоли
 
