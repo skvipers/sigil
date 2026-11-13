@@ -11,7 +11,14 @@ import sys
 from dataclasses import dataclass
 
 
-SYSTEM_CALLS = ("date", "rnd", "len")
+# One-argument calls that work on the argument's text: #name(x) -> (name, function on str).
+TEXT_CALLS = {
+    "__len": ("len", len),
+    "__lower": ("lower", str.lower),
+    "__upper": ("upper", str.upper),
+}
+TEXT_CALL_NAMES = tuple(name for name, _ in TEXT_CALLS.values())
+SYSTEM_CALLS = ("date", "rnd") + TEXT_CALL_NAMES
 MAX_LOOP_ITERATIONS = 1_000_000
 
 
@@ -141,7 +148,8 @@ def prepare_code(code: str) -> str:
             raise SigilError(f"unknown system call: #{call}{suffix}")
     code = re.sub(r"#date\b", "__sys_date", code)
     code = re.sub(r"#rnd\b", "__rnd", code)
-    code = re.sub(r"#len\b", "__len", code)
+    for name in TEXT_CALL_NAMES:
+        code = re.sub(rf"#{name}\b", f"__{name}", code)
     code = re.sub(r"\$([A-Za-z_][A-Za-z_0-9]*)", r"__fn_\1", code)
     code = re.sub(
         r"(?<!\w)(\d{1,2})\.(\d{1,2})\.(\d{4})\b",
@@ -182,8 +190,8 @@ def evaluate(expression: str, env: dict, functions=None):
         if isinstance(node, ast.Name):
             if node.id == "__sys_date":
                 return dt.date.today()
-            if node.id == "__len":
-                raise SigilError("#len expects exactly one argument")
+            if node.id in TEXT_CALLS:
+                raise SigilError(f"#{TEXT_CALLS[node.id][0]} expects exactly one argument")
             if node.id == "__rnd":
                 return random.SystemRandom().randint(0, 100)
             if node.id not in env:
@@ -229,10 +237,11 @@ def evaluate(expression: str, env: dict, functions=None):
                 chooser = random.SystemRandom()
                 return "".join(chooser.choice(args[1]) for _ in range(args[0]))
             raise SigilError("#rnd expects no arguments, (min, max), (alphabet), or (length, alphabet)")
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__len":
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in TEXT_CALLS:
+            name, function = TEXT_CALLS[node.func.id]
             if len(node.args) != 1:
-                raise SigilError("#len expects exactly one argument")
-            return len(sigil_string(visit(node.args[0])))
+                raise SigilError(f"#{name} expects exactly one argument")
+            return function(sigil_string(visit(node.args[0])))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id.startswith("__fn_"):
             name = node.func.id[5:]
             if name not in functions:

@@ -29,9 +29,11 @@ $name(%g):
 	%round = %round + 1
 	>:E2 'Раунд ' + %round + ', ваш ход (r/p/s):'
 	%move = <:
+	%move = #lower(%move) ; 'R и r - один и тот же жест'
 	@%move !~ 'rps' | #len(%move) != 1: ; 'пока ввод - не ровно один символ из rps'
 		>: 'Нужно r, p или s:'
 		%move = <:
+		%move = #lower(%move)
 
 	%cpu = #rnd('rps')
 	>: 'Вы: ' + $name(%move) + ', компьютер: ' + $name(%cpu)

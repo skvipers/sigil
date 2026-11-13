@@ -135,6 +135,32 @@ class Len(unittest.TestCase):
         self.assertIn("did you mean #len?", error_of(">: #lne('a')"))
 
 
+class CaseCalls(unittest.TestCase):
+    def test_lower_upper(self):
+        self.assertEqual(out_lines(">: #lower('HeLLo')"), ["hello"])
+        self.assertEqual(out_lines(">: #upper('HeLLo')"), ["HELLO"])
+
+    def test_cyrillic(self):
+        self.assertEqual(out_lines(">: #lower('ПРИВЕТ')"), ["привет"])
+        self.assertEqual(out_lines(">: #upper('привет')"), ["ПРИВЕТ"])
+
+    def test_number_becomes_text(self):
+        self.assertEqual(out_lines(">: #lower(5) + 1"), ["51"])
+
+    def test_with_variables_and_comparison(self):
+        self.assertEqual(out_lines("%a = 'R'\n>: #lower(%a) == 'r'"), ["True"])
+
+    def test_composition(self):
+        self.assertEqual(out_lines(">: #len(#upper('abc'))"), ["3"])
+
+    def test_argument_count_errors_name_the_call(self):
+        self.assertIn("#lower expects exactly one argument", error_of(">: #lower('a', 'b')"))
+        self.assertIn("#upper expects exactly one argument", error_of(">: #upper"))
+
+    def test_typo_hint(self):
+        self.assertIn("did you mean #lower?", error_of(">: #lowr('A')"))
+
+
 class Logic(unittest.TestCase):
     def test_and_or_not(self):
         self.assertEqual(out_lines(">: 1 < 2 & 2 < 3"), ["True"])
@@ -361,6 +387,17 @@ class ExamplePrograms(unittest.TestCase):
         # 'rp', 'rps' and '' are inside 'rps' or empty, but are not a single valid move
         out = self.play_rps("s", ["rp", "rps", "sp", "", "r", "r", "r"])
         self.assertEqual(out.count("Нужно r, p или s:"), 4)
+        self.assertIn("Вы победили!", out)
+
+    def test_rps_accepts_uppercase(self):
+        out = self.play_rps("s", ["R", "r", "R"])
+        self.assertEqual(out.count("Нужно r, p или s:"), 0)
+        self.assertIn("Счёт 3:0", out)
+        self.assertIn("Вы: камень", out)
+
+    def test_rps_uppercase_after_reprompt(self):
+        out = self.play_rps("s", ["x", "R", "R", "R"])
+        self.assertEqual(out.count("Нужно r, p или s:"), 1)
         self.assertIn("Вы победили!", out)
 
     def test_rps_every_pairing(self):
