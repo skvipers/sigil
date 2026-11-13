@@ -135,6 +135,150 @@ class Len(unittest.TestCase):
         self.assertIn("did you mean #len?", error_of(">: #lne('a')"))
 
 
+class Lists(unittest.TestCase):
+    def test_literal_and_print(self):
+        self.assertEqual(out_lines(">: [1, 'a', 2.5]"), ["[1, 'a', 2.5]"])
+        self.assertEqual(out_lines(">: []"), ["[]"])
+        self.assertEqual(out_lines(">: [[1, 2], ['x']]"), ["[[1, 2], ['x']]"])
+
+    def test_sigils_inside_list_strings_are_text(self):
+        self.assertEqual(out_lines(">: ['a;b', '%x', '~', '#len']"), ["['a;b', '%x', '~', '#len']"])
+
+    def test_index_read(self):
+        self.assertEqual(out_lines("%l = [10, 20, 30]\n>: %l[0]\n>: %l[2]"), ["10", "30"])
+        self.assertEqual(out_lines("%l = [10, 20, 30]\n%i = 1\n>: %l[%i + 1]"), ["30"])
+        self.assertEqual(out_lines("%m = [[1, 2], [3, 4]]\n>: %m[1][0]"), ["3"])
+
+    def test_text_can_be_indexed(self):
+        self.assertEqual(out_lines(">: 'abc'[1]"), ["b"])
+
+    def test_index_errors(self):
+        self.assertIn("index 3 out of range (length 3)", error_of("%l = [1, 2, 3]\n>: %l[3]"))
+        self.assertIn("index -1 out of range", error_of("%l = [1, 2, 3]\n>: %l[-1]"))
+        self.assertIn("whole number", error_of("%l = [1]\n>: %l[0.0]"))
+        self.assertIn("whole number", error_of("%l = [1]\n>: %l['a']"))
+        self.assertIn("whole number", error_of("%l = [1]\n>: %l[true]"))
+        self.assertIn("only lists and text", error_of("%n = 5\n>: %n[0]"))
+        self.assertIn("out of range", error_of("%l = []\n>: %l[0]"))
+
+    def test_index_assignment(self):
+        self.assertEqual(out_lines("%l = [1, 2, 3]\n%l[1] = 'x'\n>: %l"), ["[1, 'x', 3]"])
+        self.assertEqual(out_lines("%l = [1, 2, 3]\n%l[#len(%l) - 1] = 0\n>: %l"), ["[1, 2, 0]"])
+        self.assertEqual(out_lines("%l = [1, 2, 3]\n%i = 0\n%l[%i + 1] = 9\n>: %l"), ["[1, 9, 3]"])
+        self.assertEqual(out_lines("%m = [[1, 2], [3, 4]]\n%m[1][0] = 9\n>: %m"), ["[[1, 2], [9, 4]]"])
+
+    def test_index_assignment_from_input(self):
+        self.assertEqual(out_lines("%l = [0]\n%l[0] = <:\n>: %l", "7\n"), ["[7]"])
+
+    def test_assignment_errors(self):
+        self.assertIn("out of range", error_of("%l = [1]\n%l[1] = 5"))
+        self.assertIn("undefined variable: %zz", error_of("%zz[0] = 1"))
+        self.assertIn("read-only", error_of("%s = 'abc'\n%s[0] = 'x'"))
+        self.assertIn("empty or unclosed", error_of("%l = [1]\n%l[] = 5"))
+        self.assertIn("unknown statement: %l[0 = 5", error_of("%l = [1]\n%l[0 = 5"))  # '=' inside brackets
+        self.assertIn("assignment target", error_of("5 = 1"))
+
+    def test_comparison_line_is_not_an_assignment(self):
+        self.assertIn("unknown statement", error_of("%a = 1\n%a == 1"))
+        self.assertIn("unknown statement", error_of("%a = 1\n%a <= 1"))
+
+    # --- lists are values, not references -------------------------------------------------
+    def test_assignment_copies(self):
+        src = "%a = [1, 2]\n%b = %a\n%b[0] = 99\n>: %a\n>: %b"
+        self.assertEqual(out_lines(src), ["[1, 2]", "[99, 2]"])
+
+    def test_nested_assignment_copies_deeply(self):
+        src = "%a = [[1], [2]]\n%b = %a\n%b[0][0] = 99\n>: %a\n>: %b"
+        self.assertEqual(out_lines(src), ["[[1], [2]]", "[[99], [2]]"])
+
+    def test_literal_containing_a_list_copies_it(self):
+        src = "%a = [1]\n%b = [%a, %a]\n%a[0] = 5\n%b[0][0] = 7\n>: %a\n>: %b"
+        self.assertEqual(out_lines(src), ["[5]", "[[7], [1]]"])
+
+    def test_function_parameter_is_a_copy(self):
+        src = "$f(%l):\n\t%l[0] = 99\n\t:< %l\n%a = [1, 2]\n%r = $f(%a)\n>: %a\n>: %r"
+        self.assertEqual(out_lines(src), ["[1, 2]", "[99, 2]"])
+
+    def test_function_cannot_modify_a_global_list(self):
+        src = "%g = [1, 2]\n$f():\n\t%g[0] = 99\n\t:< %g[0]\n>: $f()\n>: %g"
+        self.assertEqual(out_lines(src), ["99", "[1, 2]"])
+
+    def test_returned_list_is_independent(self):
+        src = "$f():\n\t%x = [1]\n\t:< %x\n%a = $f()\n%b = $f()\n%a[0] = 5\n>: %b"
+        self.assertEqual(out_lines(src), ["[1]"])
+
+    # --- #add / #len / ~ -------------------------------------------------------------------
+    def test_add_returns_new_list(self):
+        self.assertEqual(out_lines("%a = [1]\n%b = #add(%a, 2)\n>: %a\n>: %b"), ["[1]", "[1, 2]"])
+
+    def test_add_in_loop_builds_list(self):
+        src = "%l = []\n%i = 0\n@%i < 3:\n\t%l = #add(%l, %i * 10)\n\t%i = %i + 1\n>: %l"
+        self.assertEqual(out_lines(src), ["[0, 10, 20]"])
+
+    def test_add_copies_the_added_value(self):
+        self.assertEqual(out_lines("%a = [1]\n%l = #add([], %a)\n%a[0] = 5\n>: %l"), ["[[1]]"])
+
+    def test_add_as_bare_statement_is_an_error(self):
+        # lists are values: the result must be assigned back
+        self.assertIn("unknown statement", error_of("%l = [1]\n#add(%l, 2)"))
+
+    def test_add_errors(self):
+        self.assertIn("first argument", error_of(">: #add(5, 1)"))
+        self.assertIn("two arguments", error_of(">: #add([1])"))
+        self.assertIn("two arguments", error_of(">: #add"))
+
+    def test_len_of_list(self):
+        self.assertEqual(out_lines(">: #len([1, 2, 3])"), ["3"])
+        self.assertEqual(out_lines(">: #len([])"), ["0"])
+        self.assertEqual(out_lines(">: #len([[1, 2]])"), ["1"])
+
+    def test_membership_is_by_element(self):
+        self.assertEqual(out_lines(">: 'b' ~ ['a', 'b']"), ["True"])
+        self.assertEqual(out_lines(">: 'z' ~ ['a', 'b']"), ["False"])
+        self.assertEqual(out_lines(">: 'z' !~ ['a', 'b']"), ["True"])
+        self.assertEqual(out_lines(">: 2 ~ [1, 2, 3]"), ["True"])
+        self.assertEqual(out_lines(">: [1] ~ [[1], [2]]"), ["True"])
+
+    def test_membership_is_not_substring_inside_a_list(self):
+        self.assertEqual(out_lines(">: 'a' ~ ['abc']"), ["False"])
+
+    def test_membership_number_equals_text_like_double_equals(self):
+        self.assertEqual(out_lines(">: 1 ~ ['1']"), ["True"])
+        self.assertEqual(out_lines(">: 1 == '1'"), ["True"])
+
+    def test_empty_text_in_list_is_a_normal_element(self):
+        self.assertEqual(out_lines(">: '' ~ ['']"), ["True"])
+        self.assertEqual(out_lines(">: '' ~ []"), ["False"])
+        self.assertEqual(out_lines(">: '' ~ 'abc'"), ["False"])  # text rule unchanged
+
+    # --- operators -------------------------------------------------------------------------
+    def test_concatenation_and_repeat(self):
+        self.assertEqual(out_lines(">: [1] + [2, 3]"), ["[1, 2, 3]"])
+        self.assertEqual(out_lines(">: [0] * 3"), ["[0, 0, 0]"])
+        self.assertEqual(out_lines(">: 2 * [1]"), ["[1, 1]"])
+        self.assertEqual(out_lines(">: 'L: ' + [1, 'a']"), ["L: [1, 'a']"])
+
+    def test_repeat_is_capped(self):
+        self.assertIn("would exceed", error_of(">: [0] * 100000000"))
+        self.assertIn("would exceed", error_of(">: 'ab' * 100000000"))
+
+    def test_equality_and_truthiness(self):
+        self.assertEqual(out_lines(">: [1, 2] == [1, 2]"), ["True"])
+        self.assertEqual(out_lines(">: [1, 2] == [2, 1]"), ["False"])
+        self.assertEqual(out_lines("? []:\n\t>: 'yes'\n>\n\t>: 'no'"), ["no"])
+        self.assertEqual(out_lines("? [0]:\n\t>: 'yes'\n>\n\t>: 'no'"), ["yes"])
+
+    def test_invalid_operations_are_sigil_errors_not_python_tracebacks(self):
+        self.assertTrue(error_of(">: [1] + 1").startswith("line 1: invalid operation"))
+        self.assertTrue(error_of(">: 'a' - 1").startswith("line 1: invalid operation"))
+        self.assertTrue(error_of(">: [1] < 2").startswith("line 1: invalid operation"))
+
+    def test_algorithm_sum_and_max(self):
+        src = ("%l = [4, 9, 2]\n%sum = 0\n%max = %l[0]\n%i = 0\n@%i < #len(%l):\n"
+               "\t%sum = %sum + %l[%i]\n\t? %l[%i] > %max:\n\t\t%max = %l[%i]\n\t%i = %i + 1\n>: %sum\n>: %max")
+        self.assertEqual(out_lines(src), ["15", "9"])
+
+
 class CaseCalls(unittest.TestCase):
     def test_lower_upper(self):
         self.assertEqual(out_lines(">: #lower('HeLLo')"), ["hello"])
@@ -411,6 +555,16 @@ class ExamplePrograms(unittest.TestCase):
                     self.assertIn("Вы победили!", out, (me, cpu))
                 else:
                     self.assertIn("Компьютер победил", out, (me, cpu))
+
+    def test_list_example(self):
+        self.assertEqual(self.run_file("list_example.sg"), [
+            "Было: [5, 3, 8, 1]",
+            "Стало: [1, 3, 5, 8]",
+            "Оригинал: [1, 3, 5, 8], копия: [100, 3, 5, 8]",
+            "['a', 'b', 'c']",
+            "True",
+            "False",
+        ])
 
     def test_comment_example(self):
         self.assertEqual(self.run_file("comment_example.sg"),

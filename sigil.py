@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import colorsys
+import copy
 import datetime as dt
 import difflib
 import re
@@ -18,8 +19,9 @@ TEXT_CALLS = {
     "__upper": ("upper", str.upper),
 }
 TEXT_CALL_NAMES = tuple(name for name, _ in TEXT_CALLS.values())
-SYSTEM_CALLS = ("date", "rnd") + TEXT_CALL_NAMES
+SYSTEM_CALLS = ("date", "rnd", "add") + TEXT_CALL_NAMES
 MAX_LOOP_ITERATIONS = 1_000_000
+MAX_SEQUENCE_LENGTH = 1_000_000  # cap for '*' repetition of text and lists
 
 
 class SigilError(Exception):
@@ -148,6 +150,7 @@ def prepare_code(code: str) -> str:
             raise SigilError(f"unknown system call: #{call}{suffix}")
     code = re.sub(r"#date\b", "__sys_date", code)
     code = re.sub(r"#rnd\b", "__rnd", code)
+    code = re.sub(r"#add\b", "__add", code)
     for name in TEXT_CALL_NAMES:
         code = re.sub(rf"#{name}\b", f"__{name}", code)
     code = re.sub(r"\$([A-Za-z_][A-Za-z_0-9]*)", r"__fn_\1", code)
@@ -192,6 +195,8 @@ def evaluate(expression: str, env: dict, functions=None):
                 return dt.date.today()
             if node.id in TEXT_CALLS:
                 raise SigilError(f"#{TEXT_CALLS[node.id][0]} expects exactly one argument")
+            if node.id == "__add":
+                raise SigilError("#add expects exactly two arguments (list, value)")
             if node.id == "__rnd":
                 return random.SystemRandom().randint(0, 100)
             if node.id not in env:
@@ -201,7 +206,18 @@ def evaluate(expression: str, env: dict, functions=None):
             left, right = visit(node.left), visit(node.right)
             if isinstance(node.op, ast.Add) and (isinstance(left, str) or isinstance(right, str)):
                 return sigil_string(left) + sigil_string(right)
+            if isinstance(node.op, ast.Mult):
+                for sequence, times in ((left, right), (right, left)):
+                    if isinstance(sequence, (str, list)) and isinstance(times, int) and len(sequence) * max(times, 0) > MAX_SEQUENCE_LENGTH:
+                        raise SigilError(f"result would exceed {MAX_SEQUENCE_LENGTH:,} elements")
             return BINOPS[type(node.op)](left, right)
+        if isinstance(node, ast.List):
+            return [copy_value(visit(element)) for element in node.elts]
+        if isinstance(node, ast.Subscript):
+            container, index = visit(node.value), visit(node.slice)
+            if not isinstance(container, (list, str)):
+                raise SigilError("only lists and text can be indexed")
+            return container[check_index(index, len(container))]
         if isinstance(node, ast.BoolOp):
             is_and = isinstance(node.op, ast.And)
             result = None
@@ -213,9 +229,14 @@ def evaluate(expression: str, env: dict, functions=None):
         if isinstance(node, ast.UnaryOp) and type(node.op) in UNARYOPS:
             return UNARYOPS[type(node.op)](visit(node.operand))
         if isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], (ast.In, ast.NotIn)):
-            # '~' / '!~': substring test on text; an empty left side is never "inside" anything.
-            needle, haystack = sigil_string(visit(node.left)), sigil_string(visit(node.comparators[0]))
-            found = bool(needle) and needle in haystack
+            # '~' / '!~': element of a list, otherwise substring of the text.
+            # In text, an empty left side is never "inside" anything.
+            left, right = visit(node.left), visit(node.comparators[0])
+            if isinstance(right, list):
+                found = any(values_equal(left, item) for item in right)
+            else:
+                needle = sigil_string(left)
+                found = bool(needle) and needle in sigil_string(right)
             return found if isinstance(node.ops[0], ast.In) else not found
         if isinstance(node, ast.Compare) and len(node.ops) == 1 and type(node.ops[0]) in CMPOPS:
             left, right = visit(node.left), visit(node.comparators[0])
@@ -241,7 +262,17 @@ def evaluate(expression: str, env: dict, functions=None):
             name, function = TEXT_CALLS[node.func.id]
             if len(node.args) != 1:
                 raise SigilError(f"#{name} expects exactly one argument")
-            return function(sigil_string(visit(node.args[0])))
+            argument = visit(node.args[0])
+            if name == "len" and isinstance(argument, list):
+                return len(argument)
+            return function(sigil_string(argument))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__add":
+            args = [visit(arg) for arg in node.args]
+            if len(args) != 2:
+                raise SigilError("#add expects exactly two arguments (list, value)")
+            if not isinstance(args[0], list):
+                raise SigilError("#add expects a list as the first argument")
+            return args[0] + [copy_value(args[1])]  # lists are values: a new list is returned
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id.startswith("__fn_"):
             name = node.func.id[5:]
             if name not in functions:
@@ -249,9 +280,9 @@ def evaluate(expression: str, env: dict, functions=None):
             params, body = functions[name]
             if len(node.args) != len(params):
                 raise SigilError(f"${name} expects {len(params)} argument(s), got {len(node.args)}")
-            local_env = env.copy()
+            local_env = {key: copy_value(value) for key, value in env.items()}
             for param, arg in zip(params, node.args):
-                local_env[param] = visit(arg)
+                local_env[param] = copy_value(visit(arg))
             try:
                 run(body, local_env, functions, in_function=True)
             except ReturnSignal as returned:
@@ -263,6 +294,8 @@ def evaluate(expression: str, env: dict, functions=None):
         return visit(tree)
     except ZeroDivisionError as exc:
         raise SigilError("division by zero") from exc
+    except TypeError as exc:
+        raise SigilError(f"invalid operation: {exc}") from exc
 
 
 import operator
@@ -289,7 +322,95 @@ def sigil_string(value):
         return value.strftime("%d.%m.%Y %H:%M:%S")
     if isinstance(value, dt.date):
         return value.strftime("%d.%m.%Y")
+    if isinstance(value, list):
+        # Same notation as a list literal: text in quotes, numbers bare.
+        return "[" + ", ".join(f"'{item}'" if isinstance(item, str) else sigil_string(item) for item in value) + "]"
     return str(value)
+
+
+def copy_value(value):
+    """Lists are values, not references: every store of a list makes its own copy."""
+    return copy.deepcopy(value) if isinstance(value, list) else value
+
+
+def values_equal(left, right) -> bool:
+    """Equality as '==' sees it: if either side is text, compare both as text."""
+    if isinstance(left, str) or isinstance(right, str):
+        return sigil_string(left) == sigil_string(right)
+    return left == right
+
+
+def check_index(index, length: int) -> int:
+    if isinstance(index, bool) or not isinstance(index, int):
+        raise SigilError("index must be a whole number")
+    if not 0 <= index < length:
+        raise SigilError(f"index {index} out of range (length {length})")
+    return index
+
+
+def find_assignment(text: str) -> int:
+    """Position of the '=' of an assignment (outside quotes/brackets, not part of ==, !=, <=, >=), else -1."""
+    depth, in_string, i = 0, False, 0
+    while i < len(text):
+        char = text[i]
+        if char == "'":
+            in_string = not in_string
+        elif not in_string:
+            if char in "[(":
+                depth += 1
+            elif char in "])":
+                depth -= 1
+            elif text[i:i + 2] == "==":
+                i += 1  # skip both characters of '=='
+            elif char == "=" and depth == 0 and (i == 0 or text[i - 1] not in "!<>"):
+                return i
+        i += 1
+    return -1
+
+
+def parse_target(target: str):
+    """'%name' or '%name[i][j]' -> (name, [index expression, ...])."""
+    match = re.match(r"%([A-Za-z_][A-Za-z_0-9]*)", target)
+    if not match:
+        raise SigilError("assignment target must be a %variable or a %list[index]")
+    name, rest, indexes = match.group(1), target[match.end():], []
+    pos = 0
+    while pos < len(rest):
+        if rest[pos].isspace():
+            pos += 1
+            continue
+        if rest[pos] != "[":
+            raise SigilError("assignment target must be a %variable or a %list[index]")
+        depth, in_string, end = 0, False, None
+        for j in range(pos, len(rest)):
+            if rest[j] == "'":
+                in_string = not in_string
+            elif not in_string and rest[j] == "[":
+                depth += 1
+            elif not in_string and rest[j] == "]":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        if end is None or not rest[pos + 1:end].strip():
+            raise SigilError("assignment target has an empty or unclosed [index]")
+        indexes.append(rest[pos + 1:end])
+        pos = end + 1
+    return name, indexes
+
+
+def assign_indexed(env, name, index_expressions, value, functions):
+    if name not in env:
+        raise SigilError(f"undefined variable: %{name}")
+    container = env[name]
+    indexes = [evaluate(expression, env, functions) for expression in index_expressions]
+    for index in indexes[:-1]:
+        if not isinstance(container, (list, str)):
+            raise SigilError("only lists and text can be indexed")
+        container = container[check_index(index, len(container))]
+    if not isinstance(container, list):
+        raise SigilError("only list elements can be assigned (text is read-only)")
+    container[check_index(indexes[-1], len(container))] = value
 
 
 def hustl_console_color(code: str) -> int:
@@ -361,7 +482,7 @@ def run(statements, env, functions=None, in_function=False):
                 color = hustl_console_color(color_match.group(1)) if color_match else None
                 expression = color_match.group(2) if color_match else output
                 value = evaluate(expression, env, functions)
-                if isinstance(value, (dt.date, dt.datetime)):
+                if isinstance(value, (dt.date, dt.datetime, list)):
                     value = sigil_string(value)
                 if color is None:
                     print(value)
@@ -370,16 +491,16 @@ def run(statements, env, functions=None, in_function=False):
             elif text == ":" or text.startswith(": "):
                 # The docs describe ':' as a continuation marker, not output.
                 pass
-            elif "=" in text:
-                name, expression = text.split("=", 1)
-                name = name.strip()
-                if not re.fullmatch(r"%[A-Za-z_][A-Za-z_0-9]*", name):
-                    raise SigilError("assignment target must be a %variable")
-                expression = expression.strip()
-                if expression == "<:":
-                    env[name[1:]] = read_value()
+            elif find_assignment(text) >= 0:
+                equals = find_assignment(text)
+                name, index_expressions = parse_target(text[:equals].strip())
+                expression = text[equals + 1:].strip()
+                value = read_value() if expression == "<:" else evaluate(expression, env, functions)
+                value = copy_value(value)
+                if index_expressions:
+                    assign_indexed(env, name, index_expressions, value, functions)
                 else:
-                    env[name[1:]] = evaluate(expression, env, functions)
+                    env[name] = value
             else:
                 raise SigilError(f"unknown statement: {text}")
         except ReturnSignal:
